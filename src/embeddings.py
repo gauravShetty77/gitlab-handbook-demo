@@ -18,7 +18,8 @@ try:
 except Exception:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 EMBED_MODEL      = "gemini-embedding-001"   # 3072-dim (replaces deprecated text-embedding-004)
-CHROMA_DB_DIR    = "vectorstore"
+# Use absolute path so this works regardless of working directory (e.g. Streamlit Cloud)
+CHROMA_DB_DIR    = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vectorstore")
 CHROMA_COLLECTION= "gitlab_chunks"
 BATCH_SIZE       = 50
 
@@ -121,12 +122,17 @@ def build_index(chunks: list[dict]) -> None:
 def index_exists() -> bool:
     try:
         import chromadb
+        logger.info(f"Checking index at: {CHROMA_DB_DIR}")
         client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
         collections = client.list_collections()
         # Newer chromadb list_collections returns objects, older ones strings
         for c in collections:
             if getattr(c, "name", c) == CHROMA_COLLECTION:
-                return client.get_collection(CHROMA_COLLECTION).count() > 0
+                count = client.get_collection(CHROMA_COLLECTION).count()
+                logger.info(f"Collection '{CHROMA_COLLECTION}' found with {count} embeddings")
+                return count > 0
+        logger.warning(f"Collection '{CHROMA_COLLECTION}' not found. Available: {[getattr(c,'name',c) for c in collections]}")
         return False
-    except Exception:
+    except Exception as e:
+        logger.error(f"index_exists() failed: {e}", exc_info=True)
         return False
